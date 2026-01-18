@@ -1,0 +1,210 @@
+# ============================================================
+# INSTITUTIONAL TRADING PLATFORM
+# AI PORTFOLIOS + BACKTESTING + OPTIONS + RISK CONTROLS
+# ============================================================
+
+# ---------------- CONFIG ----------------
+ALPACA_API_KEY = "YOUR_KEY"
+ALPACA_SECRET_KEY = "YOUR_SECRET"
+BASE_URL = "https://paper-api.alpaca.markets"
+MAX_RISK_PER_TRADE = 0.01       # 1% of equity
+MAX_PORTFOLIO_DRAWDOWN = 0.20   # 20%
+MAX_POSITION_SIZE = 0.15        # 15% per asset
+MODE = "paper"
+
+# ---------------- IMPORTS ----------------
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import requests, math
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+# ---------------- APP ----------------
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+HEADERS = {
+    "APCA-API-KEY-ID": ALPACA_API_KEY,
+    "APCA-API-SECRET-KEY": ALPACA_SECRET_KEY
+}
+
+# ============================================================
+# HEDGE FUND RISK ENGINE
+# ============================================================
+
+def account_equity():
+    r = requests.get(f"{BASE_URL}/v2/account", headers=HEADERS).json()
+    return float(r["equity"])
+
+def risk_check(order_value):
+    equity = account_equity()
+    if order_value > equity * MAX_POSITION_SIZE:
+        return False, "Position size exceeds limit"
+    if order_value > equity * MAX_RISK_PER_TRADE * 10:
+        return False, "Trade risk too high"
+    return True, "Approved"
+
+# ============================================================
+# AI SIGNAL ENGINE
+# ============================================================
+
+def compute_rsi(prices, period=14):
+    deltas = np.diff(prices)
+    gains = np.where(deltas > 0, deltas, 0).mean()
+    losses = np.where(deltas < 0, abs(deltas), 0).mean()
+    rs = gains / losses if losses != 0 else 0
+    return 100 - (100 / (1 + rs))
+
+def ai_signal(prices):
+    rsi = compute_rsi(prices)
+    trend = prices[-1] - prices[0]
+    if rsi < 30 and trend > 0:
+        return "BUY"
+    if rsi > 70:
+        return "SELL"
+    return "HOLD"
+
+# ============================================================
+# AUTOMATED AI PORTFOLIO
+# ============================================================
+
+@app.post("/ai-portfolio")
+def ai_portfolio(symbols: list):
+    equity = account_equity()
+    allocation = equity / len(symbols)
+    decisions = []
+
+    for symbol in symbols:
+        bars = requests.get(
+            f"{BASE_URL}/v2/stocks/{symbol}/bars?timeframe=1Day&limit=30",
+            headers=HEADERS
+        ).json()["bars"]
+
+        prices = [b["c"] for b in bars]
+        signal = ai_signal(prices)
+        price = prices[-1]
+
+        qty = math.floor(allocation / price)
+        order_value = qty * price
+
+        allowed, msg = risk_check(order_value)
+
+        if signal == "BUY" and allowed and qty > 0:
+            trade(symbol, qty, "buy")
+            decisions.append({symbol: "BUY"})
+        else:
+            decisions.append({symbol: signal})
+
+    return {"portfolio_decisions": decisions}
+
+# ============================================================
+# BACKTESTING ENGINE
+# ============================================================
+
+@app.post("/backtest")
+def backtest(symbol: str, capital: float = 100000):
+    bars = requests.get(
+        f"{BASE_URL}/v2/stocks/{symbol}/bars?timeframe=1Day&limit=200",
+        headers=HEADERS
+    ).json()["bars"]
+
+    prices = [b["c"] for b in bars]
+    cash = capital
+    shares = 0
+    equity_curve = []
+
+    for i in range(30, len(prices)):
+        signal = ai_signal(prices[i-30:i])
+        price = prices[i]
+
+        if signal == "BUY" and cash > price:
+            shares += cash // price
+            cash = cash % price
+
+        elif signal == "SELL" and shares > 0:
+            cash += shares * price
+            shares = 0
+
+        equity_curve.append(cash + shares * price)
+
+    return {
+        "final_equity": equity_curve[-1],
+        "return_pct": (equity_curve[-1] - capital) / capital * 100
+    }
+
+# ============================================================
+# OPTIONS TRADING FRAMEWORK (IBKR READY)
+# ============================================================
+
+@app.get("/options-chain/{symbol}")
+def options_chain(symbol: str):
+    return {
+        "symbol": symbol,
+        "note": "Connect IBKR TWS API here",
+        "supported_strategies": [
+            "Covered Call",
+            "Cash Secured Put",
+            "Vertical Spread",
+            "Iron Condor"
+        ]
+    }
+
+def options_risk_profile(strategy):
+    profiles = {
+        "Covered Call": "Low",
+        "Cash Secured Put": "Low",
+        "Vertical Spread": "Medium",
+        "Iron Condor": "Defined Risk"
+    }
+    return profiles.get(strategy, "Unknown")
+
+# ============================================================
+# ORDER EXECUTION
+# ============================================================
+
+def trade(symbol, qty, side):
+    data = {
+        "symbol": symbol,
+        "qty": qty,
+        "side": side,
+        "type": "market",
+        "time_in_force": "gtc"
+    }
+    return requests.post(
+        f"{BASE_URL}/v2/orders",
+        json=data,
+        headers=HEADERS
+    ).json()
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+@app.get("/")
+def dashboard():
+    return """
+<h1>Institutional Trading System</h1>
+<ul>
+<li>AI Portfolios</li>
+<li>Backtesting Engine</li>
+<li>Options Framework</li>
+<li>Hedge Fund Risk Controls</li>
+</ul>
+<p>Endpoints:</p>
+<pre>
+POST /ai-portfolio
+POST /backtest
+GET  /options-chain/{symbol}
+</pre>
+"""
+
+# ============================================================
+# RUN
+# uvicorn main:app --reload
+# ============================================================
