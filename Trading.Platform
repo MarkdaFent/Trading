@@ -1,66 +1,58 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>AI Trading Platform</title>
-  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-  <style>
-    body { font-family: Arial; background: #0b0e11; color: white; }
-    button { margin: 5px; padding: 8px; }
-    input { padding: 6px; }
-  </style>
+<meta charset="UTF-8" />
+<title>AI Trading Platform</title>
+
+<script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+
+<style>
+  body {
+    margin: 0;
+    background: #0b0e11;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+  }
+  #chart {
+    width: 90%;
+    height: 400px;
+    margin: 20px auto;
+  }
+  button, input {
+    padding: 8px;
+    margin: 5px;
+  }
+</style>
 </head>
 
 <body>
 
-<h1>AI Trading Platform (GitHub Pages Compatible)</h1>
+<h1>AI Trading Platform</h1>
 
-<input id="symbol" placeholder="AAPL">
+<input id="symbol" placeholder="AAPL (simulated)" />
 <button onclick="loadChart()">Load Chart</button>
-<button onclick="runAI()">Run AI Portfolio</button>
+<button onclick="runAI()">AI Portfolio</button>
 <button onclick="runBacktest()">Backtest</button>
 
-<div id="chart" style="width:900px;height:400px;"></div>
+<div id="chart"></div>
 <pre id="output"></pre>
 
 <script>
-/* ============================
-   FAKE MARKET DATA (SIM)
-   ============================ */
-function generatePrices() {
-  let prices = [100];
-  for (let i = 0; i < 100; i++) {
-    prices.push(prices[i] + (Math.random() - 0.5) * 3);
-  }
-  return prices;
-}
+document.addEventListener("DOMContentLoaded", () => {
 
-/* ============================
-   CHART
-   ============================ */
-const chart = LightweightCharts.createChart(
-  document.getElementById("chart"),
-  { layout: { background: { color: "#0b0e11" }, textColor: "white" } }
-);
-const series = chart.addLineSeries();
+  const chart = LightweightCharts.createChart(
+    document.getElementById("chart"),
+    {
+      layout: {
+        background: { color: "#0b0e11" },
+        textColor: "#d1d4dc"
+      },
+      grid: {
+        vertLines: { color: "#1f2933" },
+        horzLines: { color: "#1f2933" }
+      }
+    }
+  );
 
-function loadChart() {
-  const prices = generatePrices();
-  series.setData(prices.map((p, i) => ({ time: i, value: p })));
-}
-
-/* ============================
-   AI ENGINE
-   ============================ */
-function rsi(prices) {
-  let gains = 0, losses = 0;
-  for (let i = 1; i < prices.length; i++) {
-    let diff = prices[i] - prices[i - 1];
-    diff > 0 ? gains += diff : losses -= diff;
-  }
-  let rs = gains / (losses || 1);
-  return 100 - (100 / (1 + rs));
-}
-
-function aiSignal(prices) {
-  let r = rsi(prices);
-  let trend = prices[prices.length - 1] - prices[0]()
+  const series = chart.addLi
